@@ -9,7 +9,6 @@
 ## Prerequisites
 - AWS Account with admin access
 - GitHub Account
-- AWS CLI installed and configured
 - Git installed locally
 - Text editor (VS Code recommended)
 - FormsSpree Account
@@ -18,40 +17,39 @@
 
 ### Phase 1: Environment Setup (5 minutes)
 
-1. **Verify prerequisites**
-   ```bash
-   aws --version
-   git --version
-   aws sts get-caller-identity
-   ```
- 
-2. **Clone and prepare project**
-   ```bash
-   git clone <your-repo-url>
-   cd portfolio-website
-   ```
+1. **Download project files**
+   - Download or clone the portfolio-website repository
+   - Extract to your local machine
+   - Open the folder in your text editor
 
 ### Phase 2: AWS Infrastructure Setup (15 minutes)
 
-3. **Create S3 Bucket with unique name**
-   ```bash
-   # Replace 'yourname' with your actual name
-   BUCKET_NAME="yourname-portfolio-$(date +%s)"
-   echo "Using bucket name: $BUCKET_NAME"
-   # Create bucket
-   aws s3 mb s3://$BUCKET_NAME
-   
-   # Enable static website hosting
-   aws s3 website s3://$BUCKET_NAME \
-     --index-document index.html \
-     --error-document index.html
-   ```
-   Bucket created successfully!
+2. **Create S3 Bucket**
+   - Go to AWS Console → S3
+   - Click "Create bucket"
+   - Bucket name: `yourname-portfolio-2025` (replace yourname)
+   - Region: US East (N. Virginia)
+   - Uncheck "Block all public access"
+   - Check "I acknowledge that the current settings might result in this bucket and the objects within becoming public"
+   - Click "Create bucket"
 
-4. **Create and apply bucket policy**
-   ```bash
-   # Create bucket policy file
-   cat > bucket-policy.json << EOF
+3. **Enable static website hosting**
+   - Click on your bucket name
+   - Go to Properties tab
+   - Scroll to "Static website hosting"
+   - Click "Edit"
+   - Select "Enable"
+   - Index document: `index.html`
+   - Error document: `index.html`
+   - Click "Save changes"
+   - 📝 Note the website endpoint URL
+
+4. **Configure bucket policy**
+   - Go to Permissions tab
+   - Scroll to "Bucket policy"
+   - Click "Edit"
+   - Paste this policy (replace YOUR-BUCKET-NAME):
+   ```json
    {
      "Version": "2012-10-17",
      "Statement": [
@@ -60,57 +58,27 @@
          "Effect": "Allow",
          "Principal": "*",
          "Action": "s3:GetObject",
-         "Resource": "arn:aws:s3:::$BUCKET_NAME/*"
+         "Resource": "arn:aws:s3:::YOUR-BUCKET-NAME/*"
        }
      ]
    }
-   EOF
-   
-   # Apply bucket policy
-   aws s3api put-bucket-policy --bucket $BUCKET_NAME --policy file://bucket-policy.json
    ```
+   - Click "Save changes"
 
 5. **Create CloudFront distribution**
-   ```bash
-   # Create CloudFront config
-   cat > cloudfront-config.json << EOF
-   {
-     "CallerReference": "portfolio-$(date +%s)",
-     "Origins": {
-       "Quantity": 1,
-       "Items": [
-         {
-           "Id": "S3-$BUCKET_NAME",
-           "DomainName": "$BUCKET_NAME.s3.amazonaws.com",
-           "S3OriginConfig": {
-             "OriginAccessIdentity": ""
-           }
-         }
-       ]
-     },
-     "DefaultCacheBehavior": {
-       "TargetOriginId": "S3-$BUCKET_NAME",
-       "ViewerProtocolPolicy": "redirect-to-https",
-       "TrustedSigners": {
-         "Enabled": false,
-         "Quantity": 0
-       },
-       "ForwardedValues": {
-         "QueryString": false,
-         "Cookies": {
-           "Forward": "none"
-         }
-       }
-     },
-     "Comment": "Portfolio Website Distribution",
-     "Enabled": true
-   }
-   EOF
-   
-   # Create distribution
-   aws cloudfront create-distribution --distribution-config file://cloudfront-config.json
-   ```
-   📝 Note down the Distribution ID from output
+   - Go to AWS Console → CloudFront
+   - Click "Create distribution"
+   - Origin domain: Select your S3 bucket from dropdown
+   - Origin access: "Public"
+   - Viewer protocol policy: "Redirect HTTP to HTTPS"
+   - Default root object: `index.html`
+   - Custom error pages:
+     - Click "Create custom error response"
+     - HTTP error code: 404
+     - Response page path: `/index.html`
+     - HTTP response code: 200
+   - Click "Create distribution"
+   - 📝 Note the Distribution ID and Domain name
 
 ### Phase 3: Formspree Setup (5 minutes)
 
@@ -122,24 +90,25 @@
    - Copy the form endpoint URL
 
 7. **Update contact form endpoint**
-   ```bash
-   # Edit script.js and replace the Formspree URL
-   # Find line: const response = await fetch("https://formspree.io/f/YOUR_FORM_ID"
-   # Replace YOUR_FORM_ID with your actual form ID
-   ```
+   - Open `script.js` in your text editor
+   - Find line: `const response = await fetch("https://formspree.io/f/YOUR_FORM_ID"`
+   - Replace `YOUR_FORM_ID` with your actual form ID from Formspree
+   - Save the file
 
 ### Phase 4: GitHub Actions Setup (10 minutes)
 
 8. **Create GitHub repository**
-   ```bash
-   # If not already done
-   git remote add origin https://github.com/yourusername/portfolio-website.git
-   ```
+   - Go to GitHub.com
+   - Click "New repository"
+   - Repository name: `portfolio-website`
+   - Make it public
+   - Click "Create repository"
+   - Upload your project files or use Git commands
 
 9. **Setup GitHub Actions workflow**
-   ```bash
-   mkdir -p .github/workflows
-   cat > .github/workflows/deploy.yml << 'EOF'
+   - In your project folder, create `.github/workflows/` directory
+   - Create file `deploy.yml` with this content:
+   ```yaml
    name: Deploy to S3
    on:
      push:
@@ -159,44 +128,34 @@
            run: |
              aws s3 sync . s3://${{ secrets.S3_BUCKET_NAME }} --delete --exclude ".git/*" --exclude ".github/*"
              aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_ID }} --paths "/*"
-   EOF
    ```
 
 10. **Configure GitHub repository secrets**
-    - Go to GitHub repository
+    - Go to your GitHub repository
     - Click Settings → Secrets and variables → Actions
     - Click "New repository secret" for each:
       - `AWS_ACCESS_KEY_ID`: Your AWS access key
       - `AWS_SECRET_ACCESS_KEY`: Your AWS secret key  
-      - `S3_BUCKET_NAME`: Your bucket name from step 3
+      - `S3_BUCKET_NAME`: Your bucket name from step 2
       - `CLOUDFRONT_ID`: Distribution ID from step 5
 
 ### Phase 5: Customization and Testing (10 minutes)
 
 11. **Personalize your portfolio**
-    ```bash
-    # Edit index.html - update name, bio, skills
-    # Edit projects.js - add your real projects
-    # Test locally by opening index.html in browser
-    ```
+    - Edit `index.html` - update name, bio, skills
+    - Edit `projects.js` - add your real projects
+    - Test locally by opening `index.html` in browser
 
 12. **Initial deployment test**
-    ```bash
-    # Manual upload to test
-    aws s3 sync . s3://$BUCKET_NAME --exclude ".git/*" --exclude "*.json"
-    
-    # Get CloudFront URL
-    aws cloudfront list-distributions --query 'DistributionList.Items[0].DomainName'
-    ```
-    ✅ Visit the CloudFront URL to verify site works
+    - Go to AWS Console → S3 → Your bucket
+    - Click "Upload"
+    - Drag and drop your project files (index.html, script.js, projects.js)
+    - Click "Upload"
+    - Visit your CloudFront URL to verify site works
+    ✅ Website should load correctly
 
 13. **Deploy via GitHub Actions**
-    ```bash
-    git add .
-    git commit -m "Initial portfolio deployment"
-    git push origin main
-    ```
-    
+    - Commit and push your files to GitHub
     - Go to GitHub → Actions tab
     - Watch the deployment process
     - ✅ Should complete successfully
@@ -290,17 +249,10 @@
 - **Form not submitting**: Check Formspree endpoint URL
 - **No email received**: Verify Formspree account and form setup
 
-### Verification Commands
-```bash
-# Check bucket exists
-aws s3 ls | grep $BUCKET_NAME
-
-# Check CloudFront distributions
-aws cloudfront list-distributions --query 'DistributionList.Items[*].{Id:Id,Status:Status}'
-
-# Test website
-curl -I https://your-cloudfront-url.cloudfront.net
-```
+### Verification Steps
+- **S3 Bucket**: Go to S3 Console → Check your bucket exists and has files
+- **CloudFront**: Go to CloudFront Console → Check distribution status is "Deployed"
+- **Website**: Visit your CloudFront URL in browser
 
 ## Cost Estimate
 - S3 Storage: $1-3/month
